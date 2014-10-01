@@ -2,27 +2,27 @@
 Copyright (c) 2014, Google Inc.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
 
-    * Redistributions of source code must retain the above copyright notice, 
+    * Redistributions of source code must retain the above copyright notice,
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright notice,
       this list of conditions and the following disclaimer in the documentation
       and/or other materials provided with the distribution.
-    * Neither the name of the <ORGANIZATION> nor the names of its contributors 
-    may be used to endorse or promote products derived from this software 
+    * Neither the name of the <ORGANIZATION> nor the names of its contributors
+    may be used to endorse or promote products derived from this software
     without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE 
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
 
@@ -36,7 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   - Calculates the likely time that the background painted
   - Runs the various paint rectangles through the SpeedIndex calculation:
     https://sites.google.com/a/webpagetest.org/docs/using-webpagetest/metrics/speed-index
-    
+
   TODO:
   - Improve the start render estimate
   - Handle overlapping rects (though maybe counting the area as multiple paints
@@ -56,7 +56,7 @@ var RUMSpeedIndex = function() {
     var intersect = false;
     if (el.getBoundingClientRect) {
       var elRect = el.getBoundingClientRect();
-      var intersect = {'top': Math.max(elRect.top, 0),
+      intersect = {'top': Math.max(elRect.top, 0),
                        'left': Math.max(elRect.left, 0),
                        'bottom': Math.min(elRect.bottom, (window.innerHeight || document.documentElement.clientHeight)),
                        'right': Math.min(elRect.right, (window.innerWidth || document.documentElement.clientWidth))};
@@ -69,7 +69,7 @@ var RUMSpeedIndex = function() {
     }
     return intersect;
   };
-  
+
   // Check a given element to see if it is visible
   var CheckElement = function(el, url) {
     if (url) {
@@ -80,7 +80,7 @@ var RUMSpeedIndex = function() {
                      'rect': rect});
       }
     }
-  }
+  };
 
   // Get the visible rectangles for elements that we care about
   var GetRects = function() {
@@ -90,7 +90,7 @@ var RUMSpeedIndex = function() {
     for (var i = 0; i < elements.length; i++) {
       var el = elements[i];
       var style = window.getComputedStyle(el);
-      
+
       // check for Images
       if (el.tagName == 'IMG') {
         CheckElement(el, el.src);
@@ -104,7 +104,7 @@ var RUMSpeedIndex = function() {
       }
     }
   };
-  
+
   // Get the time at which each external resource loaded
   var GetRectTimings = function() {
     var timings = {};
@@ -112,10 +112,10 @@ var RUMSpeedIndex = function() {
     var requests = window.performance.getEntriesByType("resource");
     for (var i = 0; i < requests.length; i++)
       timings[requests[i].name] = requests[i].responseEnd;
-    for (var i = 0; i < rects.length; i++)
-      rects[i]['tm'] = timings[rects[i].url] !== undefined ? timings[rects[i].url] : 0;
+    for (var j = 0; j < rects.length; j++)
+      rects[j]['tm'] = timings[rects[j].url] !== undefined ? timings[rects[j].url] : 0;
   };
-  
+
   // Get the first paint time.
   var GetFirstPaint = function() {
     // If the browser supports a first paint event, just use what the browser reports
@@ -127,7 +127,7 @@ var RUMSpeedIndex = function() {
         var startTime = chromeTimes['startLoadTime'];
         if (chromeTimes['requestTime'])
           startTime = chromeTimes['requestTime'];
-        if (chromeTimes['firstPaintTime'] >= startTime) 
+        if (chromeTimes['firstPaintTime'] >= startTime)
           firstPaint = (chromeTimes['firstPaintTime'] - startTime) * 1000.0;
       }
     }
@@ -146,12 +146,12 @@ var RUMSpeedIndex = function() {
       }
       var requests = window.performance.getEntriesByType("resource");
       var doneCritical = false;
-      for (var i = 0; i < requests.length; i++) {
+      for (var j = 0; j < requests.length; j++) {
         if (!doneCritical &&
-            headURLs[requests[i].name] &&
-           (requests[i].initiatorType == 'script' || requests[i].initiatorType == 'link')) {
-          var requestEnd = requests[i].responseEnd;
-          if (firstPaint == undefined || requestEnd > firstPaint)
+            headURLs[requests[j].name] &&
+           (requests[j].initiatorType == 'script' || requests[j].initiatorType == 'link')) {
+          var requestEnd = requests[j].responseEnd;
+          if (firstPaint === undefined || requestEnd > firstPaint)
             firstPaint = requestEnd;
         } else {
           doneCritical = true;
@@ -159,7 +159,7 @@ var RUMSpeedIndex = function() {
       }
     }
   };
-  
+
   // Sort and group all of the paint rects by time and use them to
   // calculate the visual progress
   var CalculateVisualProgress = function() {
@@ -187,17 +187,17 @@ var RUMSpeedIndex = function() {
     }
     // Calculate the visual progress
     if (total) {
-      for (var tm in paints)
-        progress.push({'tm': tm, 'area': paints[tm]});
+      for (var time in paints)
+        progress.push({'tm': time, 'area': paints[time]});
       progress.sort(function(a,b){return a.tm - b.tm;});
       var accumulated = 0;
-      for (var i = 0; i < progress.length; i++) {
-        accumulated += progress[i].area;
-        progress[i]['progress'] = accumulated / total;
+      for (var j = 0; j < progress.length; j++) {
+        accumulated += progress[j].area;
+        progress[j]['progress'] = accumulated / total;
       }
     }
   };
-  
+
   // Given the visual progress information, Calculate the speed index.
   var CalculateSpeedIndex = function() {
     if (progress.length) {
@@ -214,15 +214,15 @@ var RUMSpeedIndex = function() {
     } else {
       SpeedIndex = firstPaint;
     }
-  }
+  };
 
   /****************************************************************************
     Main flow
   ****************************************************************************/
   var rects = [];
   var progress = [];
-  var firstPaint = undefined;
-  var SpeedIndex = undefined;
+  var firstPaint;
+  var SpeedIndex;
   var pageBackgroundWeight = 0.1;
   try {
     var navStart = window.performance.timing['navigationStart'];
