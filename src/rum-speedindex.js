@@ -110,19 +110,15 @@ var RUMSpeedIndex = function() {
     var timings = {};
     var donePaint = false;
     var requests = window.performance.getEntriesByType("resource");
-    for (var i = 0; i < requests.length; i++) {
-      var requestEnd = requests[i].responseEnd;
-      timings[requests[i].name] = requestEnd;
-    }
+    for (var i = 0; i < requests.length; i++)
+      timings[requests[i].name] = requests[i].responseEnd;
     for (var i = 0; i < rects.length; i++)
       rects[i]['tm'] = timings[rects[i].url] !== undefined ? timings[rects[i].url] : 0;
   };
   
-  // Get the first paint time.  For now just use the browser-reported
-  // time but we can do a lot better if we look at the font load times
-  // and the load times of all of the head resources.
+  // Get the first paint time.
   var GetFirstPaint = function() {
-    firstPaint = window.performance.timing['responseStart'] - navStart;
+    // If the browser supports a first paint event, just use what the browser reports
     if (window.performance.timing['msFirstPaint'])
       firstPaint = window.performance.timing['msFirstPaint'] - navStart;
     if (window['chrome'] && window.chrome['loadTimes']) {
@@ -133,6 +129,33 @@ var RUMSpeedIndex = function() {
           startTime = chromeTimes['requestTime'];
         if (chromeTimes['firstPaintTime'] >= startTime) 
           firstPaint = (chromeTimes['firstPaintTime'] - startTime) * 1000.0;
+      }
+    }
+    // For browsers that don't support first-paint, look for the time of the last
+    // non-async script or css from the head and just use that
+    if (firstPaint === undefined) {
+      firstPaint = window.performance.timing['responseStart'] - navStart;
+      var headURLs = {};
+      var headElements = document.getElementsByTagName('head')[0].children;
+      for (var i = 0; i < headElements.length; i++) {
+        var el = headElements[i];
+        if (el.tagName == 'SCRIPT' && el.src && !el.async)
+          headURLs[el.src] = true;
+        if (el.tagName == 'LINK' && el.rel == 'stylesheet' && el.href)
+          headURLs[el.href] = true;
+      }
+      var requests = window.performance.getEntriesByType("resource");
+      var doneCritical = false;
+      for (var i = 0; i < requests.length; i++) {
+        if (!doneCritical &&
+            headURLs[requests[i].name] &&
+           (requests[i].initiatorType == 'script' || requests[i].initiatorType == 'link')) {
+          var requestEnd = requests[i].responseEnd;
+          if (firstPaint == undefined || requestEnd > firstPaint)
+            firstPaint = requestEnd;
+        } else {
+          doneCritical = true;
+        }
       }
     }
   };
@@ -220,6 +243,7 @@ var RUMSpeedIndex = function() {
     dbg += '(' + progress[i].area + ') ' + progress[i].tm + ' - ' + progress[i].progress + "\n";
   dbg += 'First Paint: ' + firstPaint + "\n";
   dbg += 'Speed Index: ' + SpeedIndex + "\n";
+  console.log(dbg);
   */
   return SpeedIndex;
 };
