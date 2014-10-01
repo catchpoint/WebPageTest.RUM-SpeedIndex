@@ -51,37 +51,6 @@ var RUMSpeedIndex = function() {
   /****************************************************************************
     Support Routines
   ****************************************************************************/
-  var GetResourceTimings = function() {
-    // Get all of the available resource timings and store them in an
-    // indexed object for faster lookup.
-    var requests = window.performance.getEntriesByType("resource");
-    for (i = 0; i < requests.length; i++) {
-      var url = requests[i].name;
-    }
-        if (window.performance.getEntriesByType)
-            var requests = window.performance.getEntriesByType("resource");
-        else
-            var requests = window.performance.webkitGetEntriesByType("resource");
-        var detected = false;
-        var data = {'browser': wptBrowser,
-                    'jsCached': false,
-                    'cookiePresent': false,
-                    'existingSession' : false,
-                    'localStoragePresent' : false,
-                    'jsTime': 0};
-        for (i = 0; i < requests.length; i++) {
-            var url = requests[i].name;
-            if (requests[i].name.indexOf('site.js') != -1) {
-                detected = true;
-                if (requests[i].responseStart == 0 ||
-                    requests[i].responseStart == requests[i].requestStart)
-                    data.jsCached = true;
-                data.jsTime = Math.round(requests[i].duration);
-            }
-        }
-    
-  };
-  
   // Get the rect for the visible portion of the provided DOM element
   var GetElementViewportRect = function(el) {
     var intersect = false;
@@ -139,34 +108,118 @@ var RUMSpeedIndex = function() {
   // Get the time at which each external resource loaded
   var GetRectTimings = function() {
     var timings = {};
+    var donePaint = false;
     var requests = window.performance.getEntriesByType("resource");
-    for (var i = 0; i < requests.length; i++)
-      timings[requests[i].name] = requests[i].responseEnd;
-    for (var i = 0; i < rects.length; i++) {
-      if (timings[rects[i].url] !== undefined)
-        rects[i]['tm'] = timings[rects[i].url];
+    for (var i = 0; i < requests.length; i++) {
+      var requestEnd = requests[i].responseEnd;
+      timings[requests[i].name] = requestEnd;
     }
+    for (var i = 0; i < rects.length; i++)
+      rects[i]['tm'] = timings[rects[i].url] !== undefined ? timings[rects[i].url] : 0;
   };
   
   // Get the first paint time.  For now just use the browser-reported
   // time but we can do a lot better if we look at the font load times
   // and the load times of all of the head resources.
   var GetFirstPaint = function() {
+    firstPaint = window.performance.timing['responseStart'] - navStart;
+    if (window.performance.timing['msFirstPaint'])
+      firstPaint = window.performance.timing['msFirstPaint'] - navStart;
+    if (window['chrome'] && window.chrome['loadTimes']) {
+      var chromeTimes = window.chrome.loadTimes();
+      if (chromeTimes['firstPaintTime'] !== undefined && chromeTimes['firstPaintTime'] > 0) {
+        var startTime = chromeTimes['startLoadTime'];
+        if (chromeTimes['requestTime'])
+          startTime = chromeTimes['requestTime'];
+        if (chromeTimes['firstPaintTime'] >= startTime) 
+          firstPaint = (chromeTimes['firstPaintTime'] - startTime) * 1000.0;
+      }
+    }
   };
+  
+  // Sort and group all of the paint rects by time and use them to
+  // calculate the visual progress
+  var CalculateVisualProgress = function() {
+    var paints = {'0':0};
+    var total = 0;
+    for (var i = 0; i < rects.length; i++) {
+      var tm = firstPaint;
+      if (rects[i]['tm'] && rects[i]['tm'] > firstPaint)
+        tm = rects[i]['tm'];
+      if (paints[tm] === undefined)
+        paints[tm] = 0;
+      paints[tm] += rects[i]['area'];
+      total += rects[i]['area'];
+    }
+    // Add a paint area for the page background (count 10% of the pixels not
+    // covered by existing paint rects.
+    var pixels = Math.max(document.documentElement.clientWidth, window.innerWidth || 0) *
+                 Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+    if (pixels > 0 ) {
+      pixels = Math.max(pixels - total, 0) * pageBackgroundWeight;
+      if (paints[firstPaint] === undefined)
+        paints[firstPaint] = 0;
+      paints[firstPaint] += pixels;
+      total += pixels;
+    }
+    // Calculate the visual progress
+    if (total) {
+      for (var tm in paints)
+        progress.push({'tm': tm, 'area': paints[tm]});
+      progress.sort(function(a,b){return a.tm - b.tm;});
+      var accumulated = 0;
+      for (var i = 0; i < progress.length; i++) {
+        accumulated += progress[i].area;
+        progress[i]['progress'] = accumulated / total;
+      }
+    }
+  };
+  
+  // Given the visual progress information, Calculate the speed index.
+  var CalculateSpeedIndex = function() {
+    if (progress.length) {
+      SpeedIndex = 0;
+      var lastTime = 0;
+      var lastProgress = 0;
+      for (var i = 0; i < progress.length; i++) {
+        var elapsed = progress[i]['tm'] - lastTime;
+        if (elapsed > 0 && lastProgress < 1)
+          SpeedIndex += (1 - lastProgress) * elapsed;
+        lastTime = progress[i]['tm'];
+        lastProgress = progress[i]['progress'];
+      }
+    } else {
+      SpeedIndex = firstPaint;
+    }
+  }
 
   /****************************************************************************
     Main flow
   ****************************************************************************/
   var rects = [];
+  var progress = [];
   var firstPaint = undefined;
+  var SpeedIndex = undefined;
+  var pageBackgroundWeight = 0.1;
   try {
+    var navStart = window.performance.timing['navigationStart'];
     GetRects();
     GetRectTimings();
     GetFirstPaint();
+    CalculateVisualProgress();
+    CalculateSpeedIndex();
   } catch(e) {
   }
-  return rects;
+  /* Debug output for testing
+  var dbg = '';
+  dbg += "Paint Rects\n";
+  for (var i = 0; i < rects.length; i++)
+    dbg += '(' + rects[i].area + ') ' + rects[i].tm + ' - ' + rects[i].url + "\n";
+  dbg += "Visual Progress\n";
+  for (var i = 0; i < progress.length; i++)
+    dbg += '(' + progress[i].area + ') ' + progress[i].tm + ' - ' + progress[i].progress + "\n";
+  dbg += 'First Paint: ' + firstPaint + "\n";
+  dbg += 'Speed Index: ' + SpeedIndex + "\n";
+  */
+  return SpeedIndex;
 };
-
-// Just here for testing for now
-RUMSpeedIndex();
