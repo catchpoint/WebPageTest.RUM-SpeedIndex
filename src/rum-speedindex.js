@@ -98,6 +98,7 @@ var RUMSpeedIndex = function() {
       // Check for background images
       if (style['background-image']) {
         var backgroundImage = style['background-image'];
+        re.lastIndex = 0;
         var matches = re.exec(style['background-image']);
         if (matches && matches.length > 1)
           CheckElement(el, matches[1]);
