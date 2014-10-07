@@ -105,6 +105,21 @@ var RUMSpeedIndex = function(win) {
         if (matches && matches.length > 1)
           CheckElement(el, matches[1]);
       }
+      // recursively walk any iFrames
+      if (el.tagName == 'IFRAME') {
+        try {
+          var rect = GetElementViewportRect(el);
+          if (rect) {
+            var tm = RUMSpeedIndex(el.contentWindow);
+            if (tm) {
+              rects.push({'tm': tm,
+                          'area': rect.area,
+                          'rect': rect});
+            }
+        }
+        } catch(e) {
+        }
+      }
     }
   };
 
@@ -114,8 +129,10 @@ var RUMSpeedIndex = function(win) {
     var requests = win.performance.getEntriesByType("resource");
     for (var i = 0; i < requests.length; i++)
       timings[requests[i].name] = requests[i].responseEnd;
-    for (var j = 0; j < rects.length; j++)
-      rects[j].tm = timings[rects[j].url] !== undefined ? timings[rects[j].url] : 0;
+    for (var j = 0; j < rects.length; j++) {
+      if (!('tm' in rects[j]))
+        rects[j].tm = timings[rects[j].url] !== undefined ? timings[rects[j].url] : 0;
+    }
   };
 
   // Get the first paint time.
@@ -133,9 +150,9 @@ var RUMSpeedIndex = function(win) {
           firstPaint = (chromeTimes.firstPaintTime - startTime) * 1000.0;
       }
     }
-    // For browsers that don't support first-paint, look for the time of the last
-    // non-async script or css from the head and just use that
-    if (firstPaint === undefined) {
+    // For browsers that don't support first-paint or where we get insane values,
+    // use the time of the last non-async script or css from the head.
+    if (firstPaint === undefined || firstPaint < 0 || firstPaint > 120000) {
       firstPaint = win.performance.timing.responseStart - navStart;
       var headURLs = {};
       var headElements = doc.getElementsByTagName('head')[0].children;
@@ -160,6 +177,7 @@ var RUMSpeedIndex = function(win) {
         }
       }
     }
+    firstPaint = Math.max(firstPaint, 0);
   };
 
   // Sort and group all of the paint rects by time and use them to
