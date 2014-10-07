@@ -47,7 +47,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *******************************************************************************
 ******************************************************************************/
 
-var RUMSpeedIndex = function() {
+var RUMSpeedIndex = function(win) {
+  win = win || window;
+  var doc = win.document;
+    
   /****************************************************************************
     Support Routines
   ****************************************************************************/
@@ -58,13 +61,13 @@ var RUMSpeedIndex = function() {
       var elRect = el.getBoundingClientRect();
       intersect = {'top': Math.max(elRect.top, 0),
                        'left': Math.max(elRect.left, 0),
-                       'bottom': Math.min(elRect.bottom, (window.innerHeight || document.documentElement.clientHeight)),
-                       'right': Math.min(elRect.right, (window.innerWidth || document.documentElement.clientWidth))};
+                       'bottom': Math.min(elRect.bottom, (win.innerHeight || doc.documentElement.clientHeight)),
+                       'right': Math.min(elRect.right, (win.innerWidth || doc.documentElement.clientWidth))};
       if (intersect.bottom <= intersect.top ||
           intersect.right <= intersect.left) {
         intersect = false;
       } else {
-        intersect['area'] = (intersect.bottom - intersect.top) * (intersect.right - intersect.left);
+        intersect.area = (intersect.bottom - intersect.top) * (intersect.right - intersect.left);
       }
     }
     return intersect;
@@ -76,7 +79,7 @@ var RUMSpeedIndex = function() {
       var rect = GetElementViewportRect(el);
       if (rect) {
         rects.push({'url': url,
-                     'area': rect['area'],
+                     'area': rect.area,
                      'rect': rect});
       }
     }
@@ -85,11 +88,11 @@ var RUMSpeedIndex = function() {
   // Get the visible rectangles for elements that we care about
   var GetRects = function() {
     // Walk all of the elements in the DOM (try to only do this once)
-    var elements = document.getElementsByTagName('*');
+    var elements = doc.getElementsByTagName('*');
     var re = /url\((http.*)\)/ig;
     for (var i = 0; i < elements.length; i++) {
       var el = elements[i];
-      var style = window.getComputedStyle(el);
+      var style = win.getComputedStyle(el);
 
       // check for Images
       if (el.tagName == 'IMG') {
@@ -97,7 +100,6 @@ var RUMSpeedIndex = function() {
       }
       // Check for background images
       if (style['background-image']) {
-        var backgroundImage = style['background-image'];
         re.lastIndex = 0;
         var matches = re.exec(style['background-image']);
         if (matches && matches.length > 1)
@@ -109,35 +111,34 @@ var RUMSpeedIndex = function() {
   // Get the time at which each external resource loaded
   var GetRectTimings = function() {
     var timings = {};
-    var donePaint = false;
-    var requests = window.performance.getEntriesByType("resource");
+    var requests = win.performance.getEntriesByType("resource");
     for (var i = 0; i < requests.length; i++)
       timings[requests[i].name] = requests[i].responseEnd;
     for (var j = 0; j < rects.length; j++)
-      rects[j]['tm'] = timings[rects[j].url] !== undefined ? timings[rects[j].url] : 0;
+      rects[j].tm = timings[rects[j].url] !== undefined ? timings[rects[j].url] : 0;
   };
 
   // Get the first paint time.
   var GetFirstPaint = function() {
     // If the browser supports a first paint event, just use what the browser reports
-    if (window.performance.timing['msFirstPaint'])
-      firstPaint = window.performance.timing['msFirstPaint'] - navStart;
-    if (window['chrome'] && window.chrome['loadTimes']) {
-      var chromeTimes = window.chrome.loadTimes();
-      if (chromeTimes['firstPaintTime'] !== undefined && chromeTimes['firstPaintTime'] > 0) {
-        var startTime = chromeTimes['startLoadTime'];
-        if (chromeTimes['requestTime'])
-          startTime = chromeTimes['requestTime'];
-        if (chromeTimes['firstPaintTime'] >= startTime)
-          firstPaint = (chromeTimes['firstPaintTime'] - startTime) * 1000.0;
+    if ('msFirstPaint' in win.performance.timing)
+      firstPaint = win.performance.timing.msFirstPaint - navStart;
+    if ('chrome' in win && 'loadTimes' in win.chrome) {
+      var chromeTimes = win.chrome.loadTimes();
+      if ('firstPaintTime' in chromeTimes && chromeTimes.firstPaintTime > 0) {
+        var startTime = chromeTimes.startLoadTime;
+        if ('requestTime' in chromeTimes)
+          startTime = chromeTimes.requestTime;
+        if (chromeTimes.firstPaintTime >= startTime)
+          firstPaint = (chromeTimes.firstPaintTime - startTime) * 1000.0;
       }
     }
     // For browsers that don't support first-paint, look for the time of the last
     // non-async script or css from the head and just use that
     if (firstPaint === undefined) {
-      firstPaint = window.performance.timing['responseStart'] - navStart;
+      firstPaint = win.performance.timing.responseStart - navStart;
       var headURLs = {};
-      var headElements = document.getElementsByTagName('head')[0].children;
+      var headElements = doc.getElementsByTagName('head')[0].children;
       for (var i = 0; i < headElements.length; i++) {
         var el = headElements[i];
         if (el.tagName == 'SCRIPT' && el.src && !el.async)
@@ -145,7 +146,7 @@ var RUMSpeedIndex = function() {
         if (el.tagName == 'LINK' && el.rel == 'stylesheet' && el.href)
           headURLs[el.href] = true;
       }
-      var requests = window.performance.getEntriesByType("resource");
+      var requests = win.performance.getEntriesByType("resource");
       var doneCritical = false;
       for (var j = 0; j < requests.length; j++) {
         if (!doneCritical &&
@@ -168,17 +169,17 @@ var RUMSpeedIndex = function() {
     var total = 0;
     for (var i = 0; i < rects.length; i++) {
       var tm = firstPaint;
-      if (rects[i]['tm'] && rects[i]['tm'] > firstPaint)
-        tm = rects[i]['tm'];
+      if ('tm' in rects[i] && rects[i].tm > firstPaint)
+        tm = rects[i].tm;
       if (paints[tm] === undefined)
         paints[tm] = 0;
-      paints[tm] += rects[i]['area'];
-      total += rects[i]['area'];
+      paints[tm] += rects[i].area;
+      total += rects[i].area;
     }
     // Add a paint area for the page background (count 10% of the pixels not
     // covered by existing paint rects.
-    var pixels = Math.max(document.documentElement.clientWidth, window.innerWidth || 0) *
-                 Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+    var pixels = Math.max(doc.documentElement.clientWidth, win.innerWidth || 0) *
+                 Math.max(doc.documentElement.clientHeight, win.innerHeight || 0);
     if (pixels > 0 ) {
       pixels = Math.max(pixels - total, 0) * pageBackgroundWeight;
       if (paints[firstPaint] === undefined)
@@ -188,13 +189,16 @@ var RUMSpeedIndex = function() {
     }
     // Calculate the visual progress
     if (total) {
-      for (var time in paints)
-        progress.push({'tm': time, 'area': paints[time]});
+      for (var time in paints) {
+        if (paints.hasOwnProperty(time)) {
+          progress.push({'tm': time, 'area': paints[time]});
+        }
+      }
       progress.sort(function(a,b){return a.tm - b.tm;});
       var accumulated = 0;
       for (var j = 0; j < progress.length; j++) {
         accumulated += progress[j].area;
-        progress[j]['progress'] = accumulated / total;
+        progress[j].progress = accumulated / total;
       }
     }
   };
@@ -206,11 +210,11 @@ var RUMSpeedIndex = function() {
       var lastTime = 0;
       var lastProgress = 0;
       for (var i = 0; i < progress.length; i++) {
-        var elapsed = progress[i]['tm'] - lastTime;
+        var elapsed = progress[i].tm - lastTime;
         if (elapsed > 0 && lastProgress < 1)
           SpeedIndex += (1 - lastProgress) * elapsed;
-        lastTime = progress[i]['tm'];
-        lastProgress = progress[i]['progress'];
+        lastTime = progress[i].tm;
+        lastProgress = progress[i].progress;
       }
     } else {
       SpeedIndex = firstPaint;
@@ -226,7 +230,7 @@ var RUMSpeedIndex = function() {
   var SpeedIndex;
   var pageBackgroundWeight = 0.1;
   try {
-    var navStart = window.performance.timing['navigationStart'];
+    var navStart = win.performance.timing.navigationStart;
     GetRects();
     GetRectTimings();
     GetFirstPaint();
