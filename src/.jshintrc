@@ -11,6 +11,6 @@
   "undef": true,
   "forin": true,
   "eqnull": true,
-  "es3": true.
+  "es3": true,
   "latedef": true
 }
