@@ -1,5 +1,6 @@
-RUM-SpeedIndex
-==============
+# Boomerang wrapper around RUM-SpeedIndex
+
+Forked from https://github.com/WPO-Foundation/RUM-SpeedIndex
 
 Calculate SpeedIndex measurements from the field using Resource Timings
 

@@ -1,0 +1,16 @@
+{
+  "curly": true,
+  "eqeqeq": true,
+  "quotmark": true,
+  "unused": true,
+  "strict": true,
+  "latedef": true,
+  "newcap": true,
+  "noarg": true,
+  "sub": true,
+  "undef": true,
+  "forin": true,
+  "eqnull": true,
+  "es3": true,
+  "latedef": true
+}
