@@ -63,12 +63,9 @@ var RUMSpeedIndex = function(win) {
                        'left': Math.max(elRect.left, 0),
                        'bottom': Math.min(elRect.bottom, (win.innerHeight || doc.documentElement.clientHeight)),
                        'right': Math.min(elRect.right, (win.innerWidth || doc.documentElement.clientWidth))};
-      if (intersect.bottom <= intersect.top ||
-          intersect.right <= intersect.left) {
-        intersect = false;
-      } else {
-        intersect.area = (intersect.bottom - intersect.top) * (intersect.right - intersect.left);
-      }
+
+      // Ignore the surface area of elements that are outside of the visible viewport
+      intersect.area = Math.max((intersect.bottom - intersect.top) * (intersect.right - intersect.left), 0);
     }
     return intersect;
   };
