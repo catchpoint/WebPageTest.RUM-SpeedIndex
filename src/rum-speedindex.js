@@ -64,8 +64,12 @@ var RUMSpeedIndex = function(win) {
                        'bottom': Math.min(elRect.bottom, (win.innerHeight || doc.documentElement.clientHeight)),
                        'right': Math.min(elRect.right, (win.innerWidth || doc.documentElement.clientWidth))};
 
-      // Ignore the surface area of elements that are outside of the visible viewport
-      intersect.area = Math.max((intersect.bottom - intersect.top) * (intersect.right - intersect.left), 0);
+      var onScreenHeight = intersect.bottom - intersect.top;
+      var onScreenWidth = intersect.right - intersect.left;
+      // Ignore the surface area of elements that are outside of the visible viewport. Zero height elements can have visible children.
+      if (onScreenWidth <=0 || onScreenHeight < 0)
+          return false;
+      intersect.area = onScreenWidth * onScreenHeight;
     }
     return intersect;
   };
