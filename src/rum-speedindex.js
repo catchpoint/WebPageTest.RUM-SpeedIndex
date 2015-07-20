@@ -29,28 +29,28 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /******************************************************************************
 *******************************************************************************
   Calculates the Speed Index for a page by:
-  - Collecting a list of visible rectangles for elements that loaded
-    external resources (images, background images, fonts)
+  - Collecting a list of visible rectangles for all elements, and marking
+    the ones that loaded external resources (images, background images)
   - Gets the time when the external resource for those elements loaded
     through Resource Timing
-  - Calculates the likely time that the background painted
+  - Calculates the likely time that each background painted, substracting rectangles
+    that covered it.
+    (assuming that rectangles that don't require a resource were painted at first paint)
   - Runs the various paint rectangles through the SpeedIndex calculation:
     https://sites.google.com/a/webpagetest.org/docs/using-webpagetest/metrics/speed-index
 
   TODO:
   - Improve the start render estimate
-  - Handle overlapping rects (though maybe counting the area as multiple paints
-    will work out well)
   - Detect elements with Custom fonts and the time that the respective font
     loaded
   - Better error handling for browsers that don't support resource timing
 *******************************************************************************
 ******************************************************************************/
 
-var RUMSpeedIndex = function(win) {
+var RUMSpeedIndex = function(win, debugLogs) {
   win = win || window;
   var doc = win.document;
-    
+
   /****************************************************************************
     Support Routines
   ****************************************************************************/
@@ -63,64 +63,82 @@ var RUMSpeedIndex = function(win) {
                        'left': Math.max(elRect.left, 0),
                        'bottom': Math.min(elRect.bottom, (win.innerHeight || doc.documentElement.clientHeight)),
                        'right': Math.min(elRect.right, (win.innerWidth || doc.documentElement.clientWidth))};
-      if (intersect.bottom <= intersect.top ||
-          intersect.right <= intersect.left) {
-        intersect = false;
-      } else {
-        intersect.area = (intersect.bottom - intersect.top) * (intersect.right - intersect.left);
-      }
+
+      var onScreenHeight = intersect.bottom - intersect.top;
+      var onScreenWidth = intersect.right - intersect.left;
+      // Ignore the surface area of elements that are outside of the visible viewport. Zero height elements can have visible children.
+      if (onScreenWidth <=0 || onScreenHeight < 0)
+          return false;
+      intersect.area = onScreenWidth * onScreenHeight;
     }
     return intersect;
   };
 
-  // Check a given element to see if it is visible
-  var CheckElement = function(el, url) {
-    if (url) {
-      var rect = GetElementViewportRect(el);
-      if (rect) {
-        rects.push({'url': url,
-                     'area': rect.area,
-                     'rect': rect});
-      }
+  // Analyze the background of an element
+  var AnalyzeBackground = function(el, rect) {
+    var style = win.getComputedStyle(el)['background'];
+    var re = /url\((http.*)\)/ig;
+    re.lastIndex = 0;
+    var matches = re.exec(style);
+    if (matches && matches.length > 1)
+      rect.url = matches[1];
+    // FIXME: We're ignoring semi-transparent backgrounds here!
+    rect.color = (style.indexOf('rgb(') > -1);
+    rect.body = (el.tagName == 'BODY');
+  };
+
+  // Walk the DOM and check all the elements
+  var WalkTheDOM = function(parentRect, el) {
+    if (!parentRect.children)
+      parentRect.children = [];
+    var rect = GetElementViewportRect(el);
+    if (!rect)
+        return;
+    if (el.tagName == 'IMG') {
+      rect.url = el.src;
+    } else if (el.tagName == 'IFRAME') {
+      // Recursively calculate the score for iframes
+      rect.tm = RUMSpeedIndex(el.contentWindow);
+      rect.iframe = true;
+    } else {
+      AnalyzeBackground(el, rect);
     }
+    parentRect.children.push(rect);
+
+    for (var i = 0; i < el.children.length; ++i)
+      WalkTheDOM(rect, el.children[i]);
+  };
+
+  // Walk the rectangle representing the elements and calculate their area
+  var WalkTheRects = function(rect) {
+    var childrenSum = 0;
+    if (rect.children)
+      for (var i = 0; i < rect.children.length; ++i)
+        childrenSum += WalkTheRects(rect.children[i]);
+    rect.area = Math.max(rect.area - childrenSum, 0);
+    var returnValue = childrenSum;
+    // We're ignoring seamless iframes here, since it's not really a thing
+    if (rect.color || rect.url || rect.body || rect.iframe)
+      returnValue += rect.area;
+    return returnValue;
+  };
+
+  // Push all the rectangles into an array
+  var FlattenRects = function(rect) {
+    if (rect.color || rect.url || rect.body || rect.iframe)
+      rects.push(rect);
+    if (!rect.children)
+      return;
+    for (var i = 0; i < rect.children.length; ++i)
+      FlattenRects(rect.children[i]);
   };
 
   // Get the visible rectangles for elements that we care about
   var GetRects = function() {
-    // Walk all of the elements in the DOM (try to only do this once)
-    var elements = doc.getElementsByTagName('*');
-    var re = /url\((http.*)\)/ig;
-    for (var i = 0; i < elements.length; i++) {
-      var el = elements[i];
-      var style = win.getComputedStyle(el);
-
-      // check for Images
-      if (el.tagName == 'IMG') {
-        CheckElement(el, el.src);
-      }
-      // Check for background images
-      if (style['background-image']) {
-        re.lastIndex = 0;
-        var matches = re.exec(style['background-image']);
-        if (matches && matches.length > 1)
-          CheckElement(el, matches[1]);
-      }
-      // recursively walk any iFrames
-      if (el.tagName == 'IFRAME') {
-        try {
-          var rect = GetElementViewportRect(el);
-          if (rect) {
-            var tm = RUMSpeedIndex(el.contentWindow);
-            if (tm) {
-              rects.push({'tm': tm,
-                          'area': rect.area,
-                          'rect': rect});
-            }
-        }
-        } catch(e) {
-        }
-      }
-    }
+    var bodyRect = {};
+    WalkTheDOM(bodyRect, win.document.body);
+    WalkTheRects(bodyRect);
+    FlattenRects(bodyRect);
   };
 
   // Get the time at which each external resource loaded
@@ -134,6 +152,18 @@ var RUMSpeedIndex = function(win) {
         rects[j].tm = timings[rects[j].url] !== undefined ? timings[rects[j].url] : 0;
     }
   };
+
+  // Get the time when all the fonts loaded
+  var GetFontTime = function() {
+    var requests = win.performance.getEntriesByType("resource");
+    fontTime = 0;
+    for (var j = 0; j < requests.length; j++) {
+      var request = requests[j];
+      if ((request.name.indexOf(".woff") != -1)  && request.responseEnd > fontTime) {
+        fontTime = request.responseEnd;
+      }
+    }
+  }
 
   // Get the first paint time.
   var GetFirstPaint = function() {
@@ -186,7 +216,7 @@ var RUMSpeedIndex = function(win) {
     var paints = {'0':0};
     var total = 0;
     for (var i = 0; i < rects.length; i++) {
-      var tm = firstPaint;
+      var tm = firstPaint * (1 - fontAreaFactor) + fontTime * fontAreaFactor;
       if ('tm' in rects[i] && rects[i].tm > firstPaint)
         tm = rects[i].tm;
       if (paints[tm] === undefined)
@@ -194,17 +224,11 @@ var RUMSpeedIndex = function(win) {
       paints[tm] += rects[i].area;
       total += rects[i].area;
     }
-    // Add a paint area for the page background (count 10% of the pixels not
-    // covered by existing paint rects.
+    // Add a paint area for the page background
     var pixels = Math.max(doc.documentElement.clientWidth, win.innerWidth || 0) *
                  Math.max(doc.documentElement.clientHeight, win.innerHeight || 0);
-    if (pixels > 0 ) {
-      pixels = Math.max(pixels - total, 0) * pageBackgroundWeight;
-      if (paints[firstPaint] === undefined)
-        paints[firstPaint] = 0;
-      paints[firstPaint] += pixels;
-      total += pixels;
-    }
+    if (pixels != total)
+        console.log('Number of pixels does not add up ' + pixels + ' != ' + total);
     // Calculate the visual progress
     if (total) {
       for (var time in paints) {
@@ -244,29 +268,33 @@ var RUMSpeedIndex = function(win) {
   ****************************************************************************/
   var rects = [];
   var progress = [];
+  var fontAreaFactor = 0.25;
   var firstPaint;
+  var fontTime;
   var SpeedIndex;
-  var pageBackgroundWeight = 0.1;
   try {
     var navStart = win.performance.timing.navigationStart;
     GetRects();
     GetRectTimings();
     GetFirstPaint();
+    GetFontTime();
     CalculateVisualProgress();
     CalculateSpeedIndex();
   } catch(e) {
   }
-  /* Debug output for testing
-  var dbg = '';
-  dbg += "Paint Rects\n";
-  for (var i = 0; i < rects.length; i++)
-    dbg += '(' + rects[i].area + ') ' + rects[i].tm + ' - ' + rects[i].url + "\n";
-  dbg += "Visual Progress\n";
-  for (var i = 0; i < progress.length; i++)
-    dbg += '(' + progress[i].area + ') ' + progress[i].tm + ' - ' + progress[i].progress + "\n";
-  dbg += 'First Paint: ' + firstPaint + "\n";
-  dbg += 'Speed Index: ' + SpeedIndex + "\n";
-  console.log(dbg);
-  */
+  /* Debug output for testing */
+  if (debugLogs) {
+    var dbg = '';
+    dbg += "Paint Rects\n";
+    for (var i = 0; i < rects.length; i++)
+      dbg += 'area: ' + rects[i].area + ', time: ' + rects[i].tm + ', url: ' + rects[i].url + "\n";
+    dbg += "Visual Progress\n";
+    for (var i = 0; i < progress.length; i++)
+      dbg += 'area: ' + progress[i].area + ', time: ' + progress[i].tm + ', progress: ' + progress[i].progress + "\n";
+    dbg += 'First Paint: ' + firstPaint + "\n";
+    dbg += 'Font time: ' + fontTime + "\n";
+    dbg += 'Speed Index: ' + SpeedIndex + "\n";
+    console.log(dbg);
+  }
   return SpeedIndex;
 };
