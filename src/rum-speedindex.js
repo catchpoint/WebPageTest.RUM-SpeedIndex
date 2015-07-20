@@ -47,7 +47,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *******************************************************************************
 ******************************************************************************/
 
-var RUMSpeedIndex = function(win) {
+var RUMSpeedIndex = function(win, debugLogs) {
   win = win || window;
   var doc = win.document;
 
@@ -153,6 +153,18 @@ var RUMSpeedIndex = function(win) {
     }
   };
 
+  // Get the time when all the fonts loaded
+  var GetFontTime = function() {
+    var requests = win.performance.getEntriesByType("resource");
+    fontTime = 0;
+    for (var j = 0; j < requests.length; j++) {
+      var request = requests[j];
+      if ((request.name.indexOf(".woff") != -1)  && request.responseEnd > fontTime) {
+        fontTime = request.responseEnd;
+      }
+    }
+  }
+
   // Get the first paint time.
   var GetFirstPaint = function() {
     // If the browser supports a first paint event, just use what the browser reports
@@ -204,7 +216,7 @@ var RUMSpeedIndex = function(win) {
     var paints = {'0':0};
     var total = 0;
     for (var i = 0; i < rects.length; i++) {
-      var tm = firstPaint;
+      var tm = firstPaint * (1 - fontAreaFactor) + fontTime * fontAreaFactor;
       if ('tm' in rects[i] && rects[i].tm > firstPaint)
         tm = rects[i].tm;
       if (paints[tm] === undefined)
@@ -256,28 +268,33 @@ var RUMSpeedIndex = function(win) {
   ****************************************************************************/
   var rects = [];
   var progress = [];
+  var fontAreaFactor = 0.25;
   var firstPaint;
+  var fontTime;
   var SpeedIndex;
   try {
     var navStart = win.performance.timing.navigationStart;
     GetRects();
     GetRectTimings();
     GetFirstPaint();
+    GetFontTime();
     CalculateVisualProgress();
     CalculateSpeedIndex();
   } catch(e) {
   }
-  /* Debug output for testing
-  var dbg = '';
-  dbg += "Paint Rects\n";
-  for (var i = 0; i < rects.length; i++)
-    dbg += '(' + rects[i].area + ') ' + rects[i].tm + ' - ' + rects[i].url + "\n";
-  dbg += "Visual Progress\n";
-  for (var i = 0; i < progress.length; i++)
-    dbg += '(' + progress[i].area + ') ' + progress[i].tm + ' - ' + progress[i].progress + "\n";
-  dbg += 'First Paint: ' + firstPaint + "\n";
-  dbg += 'Speed Index: ' + SpeedIndex + "\n";
-  console.log(dbg);
-  */
+  /* Debug output for testing */
+  if (debugLogs) {
+    var dbg = '';
+    dbg += "Paint Rects\n";
+    for (var i = 0; i < rects.length; i++)
+      dbg += 'area: ' + rects[i].area + ', time: ' + rects[i].tm + ', url: ' + rects[i].url + "\n";
+    dbg += "Visual Progress\n";
+    for (var i = 0; i < progress.length; i++)
+      dbg += 'area: ' + progress[i].area + ', time: ' + progress[i].tm + ', progress: ' + progress[i].progress + "\n";
+    dbg += 'First Paint: ' + firstPaint + "\n";
+    dbg += 'Font time: ' + fontTime + "\n";
+    dbg += 'Speed Index: ' + SpeedIndex + "\n";
+    console.log(dbg);
+  }
   return SpeedIndex;
 };
