@@ -89,7 +89,7 @@ var RUMSpeedIndex = function(win) {
   var GetRects = function() {
     // Walk all of the elements in the DOM (try to only do this once)
     var elements = doc.getElementsByTagName('*');
-    var re = /url\((http.*)\)/ig;
+    var re = /url\(.*(http.*)\)/ig;
     for (var i = 0; i < elements.length; i++) {
       var el = elements[i];
       var style = win.getComputedStyle(el);
@@ -103,7 +103,7 @@ var RUMSpeedIndex = function(win) {
         re.lastIndex = 0;
         var matches = re.exec(style['background-image']);
         if (matches && matches.length > 1)
-          CheckElement(el, matches[1]);
+          CheckElement(el, matches[1].replace('"', ''));
       }
       // recursively walk any iFrames
       if (el.tagName == 'IFRAME') {
