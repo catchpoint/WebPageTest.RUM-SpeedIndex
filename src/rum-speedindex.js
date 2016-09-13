@@ -270,3 +270,7 @@ var RUMSpeedIndex = function(win) {
   */
   return SpeedIndex;
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = RUMSpeedIndex;
+}
