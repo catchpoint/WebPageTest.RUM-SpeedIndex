@@ -1,0 +1,11 @@
+{
+  "name": "rum-speedindex",
+  "version": "0.1.0",
+  "description": "Calculate SpeedIndex measurements from the field using Resource Timings",
+  "main": "src/rum-speedindex.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WPO-Foundation/RUM-SpeedIndex.git"
+  },
+  "license": "MIT"
+}
