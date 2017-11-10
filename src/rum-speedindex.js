@@ -137,10 +137,22 @@ var RUMSpeedIndex = function(win) {
 
   // Get the first paint time.
   var GetFirstPaint = function() {
+    // Try the standardized paint timing api
+    try {
+      var entries = performance.getEntriesByType('paint');
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i]['name'] == 'first-paint') {
+          navStart = performance.getEntriesByType("navigation")[0].startTime;
+          firstPaint = entries[i].startTime - navStart;
+          break;
+        }
+      }
+    } catch(e) {
+    }
     // If the browser supports a first paint event, just use what the browser reports
-    if ('msFirstPaint' in win.performance.timing)
+    if (firstPaint === undefined && 'msFirstPaint' in win.performance.timing)
       firstPaint = win.performance.timing.msFirstPaint - navStart;
-    if ('chrome' in win && 'loadTimes' in win.chrome) {
+    if (firstPaint === undefined && 'chrome' in win && 'loadTimes' in win.chrome) {
       var chromeTimes = win.chrome.loadTimes();
       if ('firstPaintTime' in chromeTimes && chromeTimes.firstPaintTime > 0) {
         var startTime = chromeTimes.startLoadTime;
