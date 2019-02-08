@@ -96,7 +96,7 @@ var RUMSpeedIndex = function(win) {
 
       // check for Images
       if (el.tagName == 'IMG') {
-        CheckElement(el, el.src);
+        CheckElement(el, el.currentSrc || el.src);
       }
       // Check for background images
       if (style['background-image']) {
