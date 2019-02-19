@@ -139,13 +139,10 @@ var RUMSpeedIndex = function(win) {
   var GetFirstPaint = function() {
     // Try the standardized paint timing api
     try {
-      var entries = performance.getEntriesByType('paint');
-      for (var i = 0; i < entries.length; i++) {
-        if (entries[i]['name'] == 'first-paint') {
-          navStart = performance.getEntriesByType("navigation")[0].startTime;
-          firstPaint = entries[i].startTime - navStart;
-          break;
-        }
+      var entries = performance.getEntriesByName('first-paint', 'paint');
+      if (entries && entries.length) {
+        navStart = performance.getEntriesByType("navigation")[0].startTime;
+        firstPaint = entries[0].startTime - navStart;
       }
     } catch(e) {
     }
