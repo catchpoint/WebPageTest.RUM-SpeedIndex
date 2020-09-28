@@ -135,20 +135,60 @@ var RUMSpeedIndex = function(win) {
     }
   };
 
+  function startLoadTime() {
+    // If the browser supports the Navigation Timing 2 and HR Time APIs, use
+    // them, otherwise fall back to the Navigation Timing 1 API.
+    if (win.PerformanceNavigationTiming && performance.timeOrigin) {
+        const ntEntry = performance.getEntriesByType('navigation')[0];
+        return (ntEntry.startTime + performance.timeOrigin) / 1000;
+    } else {
+        return performance.timing.navigationStart / 1000;
+    }
+}
+
+function requestTime() {
+    // If the browser supports the Navigation Timing 2 and HR Time APIs, use
+    // them, otherwise fall back to the Navigation Timing 1 API.
+    if (win.PerformanceNavigationTiming && performance.timeOrigin) {
+        const ntEntry = performance.getEntriesByType('navigation')[0];
+        return (ntEntry.startTime + performance.timeOrigin) / 1000;
+    } else {
+        return performance.timing.navigationStart / 1000;
+    }
+}
+
+function firstPaintTime() {
+    if (win.PerformancePaintTiming) {
+      const fpEntry = performance.getEntriesByType('paint')[0];
+      return (fpEntry.startTime + performance.timeOrigin) / 1000;
+    }
+  }
+
   // Get the first paint time.
   var GetFirstPaint = function() {
-    // Try the standardized paint timing api
+    // Navigation Timing 2 and HR Time APIs
     try {
-      var entries = performance.getEntriesByType('paint');
-      for (var i = 0; i < entries.length; i++) {
-        if (entries[i]['name'] == 'first-paint') {
-          navStart = performance.getEntriesByType("navigation")[0].startTime;
-          firstPaint = entries[i].startTime - navStart;
-          break;
-        }
-      }
+      var startTime = startLoadTime();
+      startTime = requestTime();
+      firstPaint = (firstPaintTime() - startTime) * 1000.0;
     } catch(e) {
     }
+
+    // Try the standardized paint timing api
+    if (startTime === undefined && firstPaint === undefined && !isNaN(firstPaint)) {
+      try {
+        var entries = performance.getEntriesByType('paint');
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i]['name'] == 'first-paint') {
+            navStart = performance.getEntriesByType("navigation")[0].startTime;
+            firstPaint = entries[i].startTime - navStart;
+            break;
+          }
+        }
+      } catch(e) {
+      }
+    }
+
     // If the browser supports a first paint event, just use what the browser reports
     if (firstPaint === undefined && 'msFirstPaint' in win.performance.timing)
       firstPaint = win.performance.timing.msFirstPaint - navStart;
